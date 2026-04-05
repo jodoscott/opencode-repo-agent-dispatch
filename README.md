@@ -103,4 +103,5 @@ The CLI accepts a JSON config file:
 
 - CI runs on push and pull request.
 - Tag pushes like `v0.1.0` create a GitHub release.
-- If `NPM_TOKEN` is configured, the release workflow also publishes to npm.
+- The release workflow uploads the packaged tarball to the GitHub release.
+- npm publishing can be added later once registry credentials are configured.
