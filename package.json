@@ -1,6 +1,6 @@
 {
   "name": "opencode-repo-agent-dispatch",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "General-purpose OpenCode plugin and CLI for dispatching agents across local repositories.",
   "type": "module",
   "license": "MIT",

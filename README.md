@@ -63,6 +63,7 @@ Add the plugin to your `opencode.json` and provide a repo registry.
 - `repo_agent_dispatch_status`
 - `repo_agent_dispatch_list`
 - `repo_agent_dispatch_wait`
+- `repo_agent_dispatch_watch`
 - `repo_agent_dispatch_cancel`
 
 ## CLI
@@ -107,6 +108,12 @@ opencode-repo-agent-dispatch job-wait \
   --poll-interval-ms 1000 \
   --timeout-ms 60000
 
+opencode-repo-agent-dispatch job-watch \
+  --config ./repo-dispatch.config.json \
+  --job-id <job-id> \
+  --poll-interval-ms 1000 \
+  --timeout-ms 15000
+
 opencode-repo-agent-dispatch job-cancel \
   --config ./repo-dispatch.config.json \
   --job-id <job-id>
@@ -137,6 +144,6 @@ The CLI accepts a JSON config file:
 ## Release Model
 
 - CI runs on push and pull request.
-- Tag pushes like `v0.2.0` create a GitHub release.
+- Tag pushes like `v0.2.1` create a GitHub release.
 - The release workflow uploads the packaged tarball to the GitHub release.
 - npm publishing can be added later once registry credentials are configured.

@@ -5,7 +5,7 @@ import { dispatchRepoAgent, dispatchRepoAgentsParallel, listRepoAgents, loadConf
 import { cancelJob, createJob, listJobs, readJob, waitForJob } from "./harness.mjs"
 
 function usage() {
-  process.stderr.write(`Usage:\n  opencode-repo-agent-dispatch list --config <path>\n  opencode-repo-agent-dispatch run --config <path> --repo <repo> [--agent <agent>] --message <text> [--model <provider/model>] [--variant <variant>] [--verbose] [--raw-events]\n  opencode-repo-agent-dispatch status --config <path> --session-id <session-id>\n  opencode-repo-agent-dispatch parallel --config <path> --tasks-file <path>\n  opencode-repo-agent-dispatch job-start --config <path> --tasks-file <path> [--concurrency <n>]\n  opencode-repo-agent-dispatch job-status --config <path> --job-id <id>\n  opencode-repo-agent-dispatch job-list --config <path>\n  opencode-repo-agent-dispatch job-wait --config <path> --job-id <id> [--poll-interval-ms <ms>] [--timeout-ms <ms>]\n  opencode-repo-agent-dispatch job-cancel --config <path> --job-id <id>\n`)
+  process.stderr.write(`Usage:\n  opencode-repo-agent-dispatch list --config <path>\n  opencode-repo-agent-dispatch run --config <path> --repo <repo> [--agent <agent>] --message <text> [--model <provider/model>] [--variant <variant>] [--verbose] [--raw-events]\n  opencode-repo-agent-dispatch status --config <path> --session-id <session-id>\n  opencode-repo-agent-dispatch parallel --config <path> --tasks-file <path>\n  opencode-repo-agent-dispatch job-start --config <path> --tasks-file <path> [--concurrency <n>]\n  opencode-repo-agent-dispatch job-status --config <path> --job-id <id>\n  opencode-repo-agent-dispatch job-list --config <path>\n  opencode-repo-agent-dispatch job-wait --config <path> --job-id <id> [--poll-interval-ms <ms>] [--timeout-ms <ms>]\n  opencode-repo-agent-dispatch job-watch --config <path> --job-id <id> [--poll-interval-ms <ms>] [--timeout-ms <ms>]\n  opencode-repo-agent-dispatch job-cancel --config <path> --job-id <id>\n`)
 }
 
 function parseArgs(argv) {
@@ -118,6 +118,20 @@ async function main() {
         if (!args.jobId) throw new Error("Missing required --job-id")
         result = await waitForJob(options, args.jobId, { pollIntervalMs: args.pollIntervalMs, timeoutMs: args.timeoutMs })
         break
+      case "job-watch": {
+        if (!args.jobId) throw new Error("Missing required --job-id")
+        const startedAt = Date.now()
+        let snapshot = await readJob(options, args.jobId)
+        while (!["completed", "failed", "cancelled"].includes(snapshot.status)) {
+          if (args.timeoutMs && Date.now() - startedAt > args.timeoutMs) {
+            break
+          }
+          await new Promise((resolve) => setTimeout(resolve, args.pollIntervalMs ?? 1000))
+          snapshot = await readJob(options, args.jobId)
+        }
+        result = snapshot
+        break
+      }
       case "job-cancel":
         if (!args.jobId) throw new Error("Missing required --job-id")
         result = await cancelJob(options, args.jobId)

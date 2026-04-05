@@ -33,6 +33,67 @@ function normalizeHarnessTasks(tasks) {
   }))
 }
 
+const spinnerFrames = ["-", "\\", "|", "/"]
+
+function activeTargets(job) {
+  return (job.tasks ?? [])
+    .filter((task) => ["starting", "running"].includes(task.status))
+    .map((task) => `${task.repo}/${task.agent ?? "default"}`)
+}
+
+function liveElapsed(task) {
+  if (task.elapsed) return task.elapsed
+  if (!task.started_at) return null
+  const started = Date.parse(task.started_at)
+  if (Number.isNaN(started)) return null
+  return formatTaskDuration(Date.now() - started)
+}
+
+function buildJobTitle(job, tick = 0) {
+  const frame = spinnerFrames[tick % spinnerFrames.length]
+  const summary = job.summary ?? {}
+  const active = activeTargets(job)
+  const counts = `${summary.succeeded ?? 0}/${summary.task_count ?? job.tasks?.length ?? 0}`
+  const queueState = `${summary.running ?? 0}r/${summary.queued ?? 0}q`
+  const activeSuffix = active.length ? ` · ${active.slice(0, 2).join(", ")}${active.length > 2 ? ", ..." : ""}` : ""
+  return `${frame} ${job.status} ${counts} ${queueState}${activeSuffix}`
+}
+
+function buildJobMetadata(job) {
+  const active = (job.tasks ?? [])
+    .filter((task) => ["starting", "running"].includes(task.status))
+    .map((task) => ({
+      target: `${task.repo}/${task.agent ?? "default"}`,
+      status: task.status,
+      elapsed: liveElapsed(task),
+      progress: task.last_progress ?? null,
+    }))
+
+  return {
+    jobId: job.id,
+    status: job.status,
+    taskCount: job.summary?.task_count ?? job.tasks?.length ?? 0,
+    succeeded: job.summary?.succeeded ?? 0,
+    failed: job.summary?.failed ?? 0,
+    running: job.summary?.running ?? 0,
+    queued: job.summary?.queued ?? 0,
+    activeTargets: activeTargets(job),
+    activeTasks: active,
+    lastCompleted: job.summary?.last_completed ?? null,
+    lastProgress: job.summary?.last_progress ?? null,
+  }
+}
+
+async function settleJobStart(options, jobId, attempts = 8, delayMs = 250) {
+  let snapshot = await readJob(options, jobId)
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (snapshot.status !== "starting") return snapshot
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    snapshot = await readJob(options, jobId)
+  }
+  return snapshot
+}
+
 const startTaskSchema = tool.schema.object({
   repo: tool.schema.string(),
   agent: tool.schema.string().optional(),
@@ -139,14 +200,15 @@ export async function server(input, options = {}) {
             { moduleUrl: import.meta.url, workingDirectory: input.directory },
           )
           context.metadata({
-            title: `Repo dispatch job started (${job.id})`,
-            metadata: {
-              jobId: job.id,
-              taskCount: job.summary.task_count,
-              status: job.status,
-            },
+            title: buildJobTitle(job, 0),
+            metadata: buildJobMetadata(job),
           })
-          return renderJobMarkdown(job)
+          const settledJob = await settleJobStart(options, job.id)
+          context.metadata({
+            title: buildJobTitle(settledJob, 1),
+            metadata: buildJobMetadata(settledJob),
+          })
+          return renderJobMarkdown(settledJob)
         },
       }),
       repo_agent_dispatch_status: tool({
@@ -156,7 +218,7 @@ export async function server(input, options = {}) {
         },
         async execute(args, context) {
           const job = await readJob(options, args.jobId)
-          context.metadata({ title: `Repo dispatch job status (${job.status})`, metadata: { jobId: job.id, status: job.status } })
+          context.metadata({ title: buildJobTitle(job, 0), metadata: buildJobMetadata(job) })
           return renderJobMarkdown(job)
         },
       }),
@@ -178,7 +240,8 @@ export async function server(input, options = {}) {
         },
         async execute(args, context) {
           let snapshot = await readJob(options, args.jobId)
-          context.metadata({ title: `Repo dispatch wait (${snapshot.status})`, metadata: { jobId: snapshot.id, status: snapshot.status } })
+          let tick = 0
+          context.metadata({ title: buildJobTitle(snapshot, tick), metadata: buildJobMetadata(snapshot) })
           const startedAt = Date.now()
           while (!["completed", "failed", "cancelled"].includes(snapshot.status)) {
             if (args.timeoutMs && Date.now() - startedAt > args.timeoutMs) {
@@ -187,20 +250,45 @@ export async function server(input, options = {}) {
 
             await new Promise((resolve) => setTimeout(resolve, args.pollIntervalMs ?? 1000))
             snapshot = await readJob(options, args.jobId)
+            tick += 1
             context.metadata({
-              title: `Repo dispatch wait (${snapshot.status})`,
-              metadata: {
-                jobId: snapshot.id,
-                status: snapshot.status,
-                succeeded: snapshot.summary?.succeeded ?? 0,
-                failed: snapshot.summary?.failed ?? 0,
-                running: snapshot.summary?.running ?? 0,
-                queued: snapshot.summary?.queued ?? 0,
-                lastProgress: snapshot.summary?.last_progress ?? null,
-              },
+              title: buildJobTitle(snapshot, tick),
+              metadata: buildJobMetadata(snapshot),
             })
           }
 
+          context.metadata({ title: buildJobTitle(snapshot, tick + 1), metadata: buildJobMetadata(snapshot) })
+          return renderJobMarkdown(snapshot)
+        },
+      }),
+      repo_agent_dispatch_watch: tool({
+        description: "Watch a persistent dispatch job and return the latest snapshot even if it is still running",
+        args: {
+          jobId: tool.schema.string().describe("Dispatch job id"),
+          pollIntervalMs: tool.schema.number().int().positive().optional().describe("Polling interval in milliseconds"),
+          timeoutMs: tool.schema.number().int().positive().optional().describe("Maximum watch time in milliseconds before returning the latest snapshot"),
+        },
+        async execute(args, context) {
+          let snapshot = await readJob(options, args.jobId)
+          let tick = 0
+          const startedAt = Date.now()
+          context.metadata({ title: buildJobTitle(snapshot, tick), metadata: buildJobMetadata(snapshot) })
+
+          while (![["completed", "failed", "cancelled"]].flat().includes(snapshot.status)) {
+            if (args.timeoutMs && Date.now() - startedAt > args.timeoutMs) {
+              break
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, args.pollIntervalMs ?? 1000))
+            snapshot = await readJob(options, args.jobId)
+            tick += 1
+            context.metadata({
+              title: buildJobTitle(snapshot, tick),
+              metadata: buildJobMetadata(snapshot),
+            })
+          }
+
+          context.metadata({ title: buildJobTitle(snapshot, tick + 1), metadata: buildJobMetadata(snapshot) })
           return renderJobMarkdown(snapshot)
         },
       }),
