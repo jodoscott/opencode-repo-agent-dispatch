@@ -2,9 +2,10 @@
 
 import process from "node:process"
 import { dispatchRepoAgent, dispatchRepoAgentsParallel, listRepoAgents, loadConfigFile, statusSession } from "./core.mjs"
+import { cancelJob, createJob, listJobs, readJob, waitForJob } from "./harness.mjs"
 
 function usage() {
-  process.stderr.write(`Usage:\n  opencode-repo-agent-dispatch list --config <path>\n  opencode-repo-agent-dispatch run --config <path> --repo <repo> [--agent <agent>] --message <text> [--model <provider/model>] [--variant <variant>] [--verbose] [--raw-events]\n  opencode-repo-agent-dispatch status --config <path> --session-id <session-id>\n  opencode-repo-agent-dispatch parallel --config <path> --tasks-file <path>\n`)
+  process.stderr.write(`Usage:\n  opencode-repo-agent-dispatch list --config <path>\n  opencode-repo-agent-dispatch run --config <path> --repo <repo> [--agent <agent>] --message <text> [--model <provider/model>] [--variant <variant>] [--verbose] [--raw-events]\n  opencode-repo-agent-dispatch status --config <path> --session-id <session-id>\n  opencode-repo-agent-dispatch parallel --config <path> --tasks-file <path>\n  opencode-repo-agent-dispatch job-start --config <path> --tasks-file <path> [--concurrency <n>]\n  opencode-repo-agent-dispatch job-status --config <path> --job-id <id>\n  opencode-repo-agent-dispatch job-list --config <path>\n  opencode-repo-agent-dispatch job-wait --config <path> --job-id <id> [--poll-interval-ms <ms>] [--timeout-ms <ms>]\n  opencode-repo-agent-dispatch job-cancel --config <path> --job-id <id>\n`)
 }
 
 function parseArgs(argv) {
@@ -37,6 +38,18 @@ function parseArgs(argv) {
         break
       case "--tasks-file":
         args.tasksFile = rest[++index]
+        break
+      case "--job-id":
+        args.jobId = rest[++index]
+        break
+      case "--concurrency":
+        args.concurrency = Number(rest[++index])
+        break
+      case "--poll-interval-ms":
+        args.pollIntervalMs = Number(rest[++index])
+        break
+      case "--timeout-ms":
+        args.timeoutMs = Number(rest[++index])
         break
       case "--verbose":
         args.verbose = true
@@ -88,6 +101,27 @@ async function main() {
         result = await dispatchRepoAgentsParallel(options, tasks, runtime)
         break
       }
+      case "job-start": {
+        if (!args.tasksFile) throw new Error("Missing required --tasks-file")
+        const tasks = await loadConfigFile(args.tasksFile)
+        result = await createJob(options, { tasks, concurrency: args.concurrency }, { moduleUrl: import.meta.url, workingDirectory: process.cwd() })
+        break
+      }
+      case "job-status":
+        if (!args.jobId) throw new Error("Missing required --job-id")
+        result = await readJob(options, args.jobId)
+        break
+      case "job-list":
+        result = await listJobs(options)
+        break
+      case "job-wait":
+        if (!args.jobId) throw new Error("Missing required --job-id")
+        result = await waitForJob(options, args.jobId, { pollIntervalMs: args.pollIntervalMs, timeoutMs: args.timeoutMs })
+        break
+      case "job-cancel":
+        if (!args.jobId) throw new Error("Missing required --job-id")
+        result = await cancelJob(options, args.jobId)
+        break
       default:
         throw new Error(`Unknown command: ${args.command}`)
     }

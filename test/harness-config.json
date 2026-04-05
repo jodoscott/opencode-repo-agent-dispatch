@@ -1,0 +1,13 @@
+{
+  "baseDirectory": "..",
+  "repos": {
+    "infra-talos-mgmt": {
+      "path": "infra-talos-mgmt",
+      "defaultAgent": "talos-mgmt"
+    },
+    "platform-kubernetes-omni": {
+      "path": "platform-kubernetes-omni",
+      "defaultAgent": "platform-omni"
+    }
+  }
+}

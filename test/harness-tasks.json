@@ -1,0 +1,12 @@
+[
+  {
+    "repo": "infra-talos-mgmt",
+    "agent": "talos-mgmt",
+    "message": "Reply with exactly HARNESS_FIX_A and nothing else."
+  },
+  {
+    "repo": "platform-kubernetes-omni",
+    "agent": "platform-omni",
+    "message": "Reply with exactly HARNESS_FIX_B and nothing else."
+  }
+]

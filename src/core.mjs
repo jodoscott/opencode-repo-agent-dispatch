@@ -25,6 +25,12 @@ function summarizeEvent(event) {
   }
 }
 
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return null
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
 function extractJsonDocument(text) {
   const trimmed = text.trim()
   if (!trimmed) {
@@ -44,7 +50,7 @@ function extractJsonDocument(text) {
 
 function runCommand(command, args, { cwd = process.cwd(), env = process.env, onStdoutLine, onStderrLine } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env })
+    const child = spawn(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] })
     const stdoutLines = []
     const stderrLines = []
     let stdoutBuffer = ""
@@ -95,6 +101,8 @@ export async function dispatchRepoAgent(options = {}, args, runtime = {}) {
   const repo = getRepoDefinition(options, args.repo, runtime.workingDirectory)
   const opencodeBin = options.opencodeBin ?? "opencode"
   const agent = args.agent ?? repo.defaultAgent
+  const startedAt = Date.now()
+  const env = runtime.env ?? process.env
 
   if (!agent) {
     throw new Error(`No agent provided and repo '${args.repo}' has no defaultAgent`)
@@ -127,6 +135,7 @@ export async function dispatchRepoAgent(options = {}, args, runtime = {}) {
 
   const result = await runCommand(opencodeBin, commandArgs, {
     cwd: runtime.workingDirectory ?? process.cwd(),
+    env,
     onStdoutLine: (line) => {
       if (!line.trim()) return
       let event
@@ -159,12 +168,15 @@ export async function dispatchRepoAgent(options = {}, args, runtime = {}) {
       agent,
       success: false,
       error: [...stderr, ...result.stdoutLines].join("\n"),
+      elapsed_ms: Date.now() - startedAt,
+      elapsed: formatDuration(Date.now() - startedAt),
       progress,
       events,
       stderr,
     }
   }
 
+  const elapsedMs = Date.now() - startedAt
   return {
     repo: args.repo,
     path: repo.path,
@@ -173,6 +185,8 @@ export async function dispatchRepoAgent(options = {}, args, runtime = {}) {
     session_id: events.find((event) => event.sessionID)?.sessionID ?? "",
     result: events.filter((event) => event.type === "text").map((event) => event.part?.text ?? "").join(""),
     event_count: events.length,
+    elapsed_ms: elapsedMs,
+    elapsed: formatDuration(elapsedMs),
     progress,
     events,
     stderr,
