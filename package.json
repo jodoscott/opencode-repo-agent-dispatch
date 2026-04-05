@@ -1,0 +1,48 @@
+{
+  "name": "opencode-repo-agent-dispatch",
+  "version": "0.1.0",
+  "description": "General-purpose OpenCode plugin and CLI for dispatching agents across local repositories.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jodoscott/opencode-repo-agent-dispatch.git"
+  },
+  "homepage": "https://github.com/jodoscott/opencode-repo-agent-dispatch",
+  "bugs": {
+    "url": "https://github.com/jodoscott/opencode-repo-agent-dispatch/issues"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "agent",
+    "dispatch",
+    "monorepo",
+    "workflow"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "opencode-repo-agent-dispatch": "./src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./plugin": "./src/plugin.mjs",
+    "./core": "./src/core.mjs",
+    "./render": "./src/render.mjs"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "npm test",
+    "pack:check": "npm pack --dry-run"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.3.15"
+  }
+}
